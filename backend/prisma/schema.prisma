@@ -1,0 +1,255 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============ 用户模型 ============
+model User {
+  id            String     @id @default(cuid())
+  email         String     @unique
+  username      String     @unique
+  password      String
+  avatar        String?
+  bio           String?
+  
+  // 订阅信息
+  plan          SubscriptionPlan @default(FREE)
+  quotaUsed     Int              @default(0)
+  quotaLimit    Int              @default(100)
+  
+  // 关系
+  projects      Project[]
+  videos        Video[]
+  characters    Character[]
+  
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  @@map("users")
+}
+
+enum SubscriptionPlan {
+  FREE
+  BASIC
+  PRO
+  ENTERPRISE
+}
+
+// ============ 项目模型 ============
+model Project {
+  id            String     @id @default(cuid())
+  title         String
+  description   String?
+  thumbnail     String?
+  
+  userId        String
+  user          User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // 关系
+  videos        Video[]
+  scripts       Script[]
+  
+  status        ProjectStatus @default(DRAFT)
+  
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  @@map("projects")
+}
+
+enum ProjectStatus {
+  DRAFT
+  IN_PROGRESS
+  COMPLETED
+  PUBLISHED
+}
+
+// ============ 视频模型 ============
+model Video {
+  id            String     @id @default(cuid())
+  title         String
+  originalUrl   String
+  processingUrl String?
+  outputUrl     String?
+  
+  projectId     String
+  project       Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  userId        String
+  user          User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // 视频信息
+  duration      Float?
+  width         Int?
+  height        Int?
+  fps           Float?
+  
+  // 处理状态
+  status        VideoStatus @default(UPLOADED)
+  progress      Int        @default(0)
+  error         String?
+  
+  // 关系
+  scenes        Scene[]
+  
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  @@map("videos")
+}
+
+enum VideoStatus {
+  UPLOADED
+  PROCESSING
+  SCENES_EXTRACTED
+  COMPOSITING
+  RENDERING
+  COMPLETED
+  FAILED
+}
+
+// ============ 场景模型 ============
+model Scene {
+  id            String     @id @default(cuid())
+  videoId       String
+  video         Video      @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  
+  sceneNumber   Int
+  startTime     Float
+  endTime       Float
+  description   String?
+  
+  // 关系
+  dialogues     Dialogue[]
+  
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  @@map("scenes")
+}
+
+// ============ 对白/剧本模型 ============
+model Script {
+  id            String     @id @default(cuid())
+  projectId     String
+  project       Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  title         String
+  content       String     // 剧本内容（JSON 格式）
+  
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  @@map("scripts")
+}
+
+model Dialogue {
+  id            String     @id @default(cuid())
+  sceneId       String
+  scene         Scene      @relation(fields: [sceneId], references: [id], onDelete: Cascade)
+  
+  characterId   String?
+  character     Character? @relation(fields: [characterId], references: [id], onDelete: SetNull)
+  
+  text          String
+  voiceUrl      String?
+  startTime     Float
+  duration      Float
+  
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  @@map("dialogues")
+}
+
+// ============ 角色/虚拟形象模型 ============
+model Character {
+  id            String     @id @default(cuid())
+  userId        String
+  user          User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  name          String
+  avatar        String     // 虚拟形象 URL
+  voice         String     // 声音 ID
+  language      String     @default("zh-CN")
+  gender        String?
+  age           Int?
+  personality   String?
+  
+  isPublic      Boolean    @default(false)
+  
+  // 关系
+  dialogues     Dialogue[]
+  
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  @@map("characters")
+}
+
+// ============ 音频配置模型 ============
+model AudioConfig {
+  id            String     @id @default(cuid())
+  name          String
+  language      String
+  voice         String
+  speed         Float      @default(1.0)
+  pitch         Float      @default(0.0)
+  
+  provider      String     // google, elevenlabs, etc.
+  
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  @@map("audio_configs")
+}
+
+// ============ 渲染任务模型 ============
+model RenderJob {
+  id            String     @id @default(cuid())
+  videoId       String?
+  projectId     String?
+  
+  status        RenderStatus @default(PENDING)
+  progress      Int        @default(0)
+  error         String?
+  
+  outputUrl     String?
+  
+  startedAt     DateTime?
+  completedAt   DateTime?
+  
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  @@map("render_jobs")
+}
+
+enum RenderStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+// ============ 使用记录模型 ============
+model UsageLog {
+  id            String     @id @default(cuid())
+  userId        String
+  
+  operation     String     // upload, tts, render, etc.
+  duration      Float?
+  cost          Float      @default(0)
+  status        String
+  
+  createdAt     DateTime   @default(now())
+
+  @@map("usage_logs")
+}
